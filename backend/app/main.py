@@ -6,7 +6,7 @@ from loguru import logger
 import uvicorn
 
 from app.api import wallets, dashboard, notifications, config as config_api
-from app.config import config
+from app.config import config, DATA_DIR
 from app.utils.logger import setup_logger
 
 # 设置日志
@@ -39,7 +39,7 @@ app.include_router(config_api.router, prefix="/api/config", tags=["配置"])
 async def startup_event():
     """启动事件"""
     logger.info("🚀 HyperLiquid 钱包分析系统启动中...")
-    logger.info(f"📁 数据目录: {config.DATA_DIR}")
+    logger.info(f"📁 数据目录: {DATA_DIR}")
     logger.info("✅ 系统启动完成")
 
 
