@@ -54,3 +54,5 @@ gendan-deploy-*.zip
 # 环境变量
 .env
 .env.local
+# Git 凭证文件（包含 Token，不要提交）
+.git-credentials
