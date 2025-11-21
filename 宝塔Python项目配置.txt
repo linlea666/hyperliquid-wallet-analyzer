@@ -1,0 +1,25 @@
+宝塔面板 Python 项目配置参数
+=====================================
+
+项目名称: hyperliquid-backend
+Python环境: 3.11.13（或更高版本）
+启动方式: 命令行启动 ✅
+项目路径: /www/wwwroot/gendan/backend
+启动命令: uvicorn app.main:app --host 0.0.0.0 --port 8000
+通讯协议: asgi ⚠️ 重要！FastAPI 必须使用 ASGI
+端口: 8000
+启动用户: www
+安装依赖包: /www/wwwroot/gendan/backend/requirements.txt
+
+更多设置:
+- 执行命令: uvicorn app.main:app --host 0.0.0.0 --port 8000
+- 通讯协议: asgi
+- 端口: 8000
+- 项目初始化命令: pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+
+注意事项:
+1. 通讯协议必须选择 asgi（不是 wsgi）
+2. 启动命令中的 --host 0.0.0.0 很重要，允许外部访问
+3. 端口 8000 确保未被占用
+4. 安装依赖时使用国内镜像加速
+

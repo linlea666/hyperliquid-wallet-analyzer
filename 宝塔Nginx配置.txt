@@ -1,0 +1,37 @@
+宝塔面板 Nginx 配置要点
+=====================================
+
+1. 网站根目录
+   根目录: /www/wwwroot/gendan/frontend/dist
+
+2. 反向代理配置
+   代理名称: api
+   代理目录: /api
+   目标URL: http://127.0.0.1:8000
+   发送域名: $host
+
+3. location / 配置（重要！支持前端路由）
+   location / {
+       try_files $uri $uri/ /index.html;
+   }
+
+4. 完整配置示例（在网站配置文件中）
+   server {
+       listen 80;
+       server_name your-domain.com;
+       
+       root /www/wwwroot/gendan/frontend/dist;
+       index index.html;
+       
+       location / {
+           try_files $uri $uri/ /index.html;
+       }
+       
+       location /api {
+           proxy_pass http://127.0.0.1:8000;
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+       }
+   }
+

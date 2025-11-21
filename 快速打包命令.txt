@@ -1,0 +1,20 @@
+快速打包命令（在终端运行）
+=====================================
+
+cd /Users/huahua/Documents/gendan
+
+zip -r gendan-deploy.zip . \
+  -x "*.git*" \
+  -x "*.DS_Store" \
+  -x "node_modules/*" \
+  -x "backend/venv/*" \
+  -x "backend/logs/*" \
+  -x "logs/*" \
+  -x "*.pid" \
+  -x "frontend/dist/*" \
+  -x "frontend/node_modules/*" \
+  -x "*.log"
+
+打包完成后，压缩包位置：
+/Users/huahua/Documents/gendan/gendan-deploy.zip
+

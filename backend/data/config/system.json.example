@@ -1,0 +1,25 @@
+{
+  "api": {
+    "base_url": "https://api.hyperliquid.xyz/info",
+    "timeout": 30,
+    "retry_times": 3,
+    "retry_delay": 1,
+    "use_mock": false
+  },
+  "update": {
+    "active_interval": 3600,
+    "normal_interval": 21600,
+    "dormant_interval": 86400,
+    "batch_size": 100,
+    "concurrent_limit": 10
+  },
+  "cache": {
+    "api_cache_ttl": 300,
+    "calculation_cache_ttl": 3600
+  },
+  "pagination": {
+    "default_page_size": 20,
+    "max_page_size": 100
+  }
+}
+

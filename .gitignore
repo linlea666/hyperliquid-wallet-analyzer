@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+dist/
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 数据文件（不上传敏感数据）
+backend/data/wallets/*.json
+!backend/data/wallets/index.json.example
+backend/data/cache/
+backend/logs/*.log
+backend/logs/*.zip
+logs/*.log
+
+# 进程ID文件
+.backend.pid
+.frontend.pid
+
+# 配置文件（包含敏感信息，使用示例文件）
+backend/data/config/*.json
+!backend/data/config/*.example.json
+
+# macOS
+.DS_Store
+
+# 压缩包
+*.zip
+gendan-deploy-*.zip
+
+# 环境变量
+.env
+.env.local
