@@ -124,7 +124,7 @@ class DataScheduler:
                 SELECT address, last_updated 
                 FROM wallets 
                 WHERE update_frequency = 'active'
-                ORDER BY last_updated ASC NULLS FIRST
+                ORDER BY CASE WHEN last_updated IS NULL THEN 0 ELSE 1 END, last_updated ASC
                 LIMIT ?
             """, (self.batch_size,))
             
@@ -156,7 +156,7 @@ class DataScheduler:
                 SELECT address, last_updated 
                 FROM wallets 
                 WHERE update_frequency = 'normal'
-                ORDER BY last_updated ASC NULLS FIRST
+                ORDER BY CASE WHEN last_updated IS NULL THEN 0 ELSE 1 END, last_updated ASC
                 LIMIT ?
             """, (self.batch_size,))
             
@@ -187,7 +187,7 @@ class DataScheduler:
                 SELECT address, last_updated 
                 FROM wallets 
                 WHERE update_frequency = 'inactive'
-                ORDER BY last_updated ASC NULLS FIRST
+                ORDER BY CASE WHEN last_updated IS NULL THEN 0 ELSE 1 END, last_updated ASC
                 LIMIT ?
             """, (self.batch_size // 2,))  # 不活跃钱包更新数量减半
             
