@@ -9,4 +9,8 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 python-multipart==0.0.6
 websockets==12.0
-
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+psutil==5.9.6
+aiosmtplib==1.2.0
+email-validator==2.1.0.post1

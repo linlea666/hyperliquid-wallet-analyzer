@@ -11,12 +11,33 @@ from app.config import config
 class HyperLiquidClient:
     """HyperLiquid API 客户端"""
     
-    def __init__(self):
+    def __init__(self, use_mock: bool = None):
+        """
+        初始化 API 客户端
+        
+        Args:
+            use_mock: 是否使用模拟数据，None 则从配置读取
+        """
         self.base_url = config.get_config("system").get("api", {}).get("base_url", "https://api.hyperliquid.xyz/info")
         self.timeout = config.get_config("system").get("api", {}).get("timeout", 30)
         self.retry_times = config.get_config("system").get("api", {}).get("retry_times", 3)
-        self.client = httpx.AsyncClient(timeout=self.timeout)
-        self.use_mock = config.get_config("system").get("api", {}).get("use_mock", True)  # 默认使用 Mock
+        self.rate_limit_delay = config.get_config("system").get("api", {}).get("rate_limit_delay", 0.2)  # 限流延迟
+        
+        # 禁用代理
+        self.client = httpx.AsyncClient(
+            timeout=self.timeout,
+            proxies=None  # 明确禁用代理
+        )
+        
+        # 是否使用 Mock 数据
+        if use_mock is not None:
+            self.use_mock = use_mock
+        else:
+            self.use_mock = config.get_config("system").get("api", {}).get("use_mock", True)
+        
+        # 请求计数器（用于限流）
+        self._request_count = 0
+        self._last_request_time = 0
     
     async def get_wallet_data(self, address: str) -> Dict[str, Any]:
         """获取钱包完整数据"""
@@ -54,6 +75,64 @@ class HyperLiquidClient:
             logger.warning(f"⚠️ 回退到 Mock 数据")
             return self._generate_mock_wallet_data(address)
     
+    async def _make_request(self, request_data: Dict[str, Any], retry_count: int = 0) -> Any:
+        """
+        发起 API 请求（带重试和限流）
+        
+        Args:
+            request_data: 请求数据
+            retry_count: 当前重试次数
+            
+        Returns:
+            API 响应数据
+        """
+        # 限流控制
+        import time
+        current_time = time.time()
+        if current_time - self._last_request_time < self.rate_limit_delay:
+            await asyncio.sleep(self.rate_limit_delay)
+        
+        try:
+            response = await self.client.post(
+                self.base_url,
+                json=request_data,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            self._last_request_time = time.time()
+            self._request_count += 1
+            
+            response.raise_for_status()
+            return response.json()
+            
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:  # 限流
+                if retry_count < self.retry_times:
+                    wait_time = (retry_count + 1) * 2  # 指数退避
+                    logger.warning(f"触发限流，等待 {wait_time} 秒后重试...")
+                    await asyncio.sleep(wait_time)
+                    return await self._make_request(request_data, retry_count + 1)
+                else:
+                    logger.error(f"达到最大重试次数，请求失败")
+                    raise
+            else:
+                logger.error(f"HTTP 错误: {e.response.status_code}")
+                raise
+                
+        except httpx.RequestError as e:
+            if retry_count < self.retry_times:
+                wait_time = (retry_count + 1) * 1
+                logger.warning(f"请求错误，{wait_time} 秒后重试: {e}")
+                await asyncio.sleep(wait_time)
+                return await self._make_request(request_data, retry_count + 1)
+            else:
+                logger.error(f"达到最大重试次数，请求失败: {e}")
+                raise
+        
+        except Exception as e:
+            logger.error(f"未知错误: {e}")
+            raise
+    
     async def get_user_fills(self, address: str, start_time: Optional[int] = None) -> List[Dict[str, Any]]:
         """获取用户成交记录"""
         try:
@@ -71,13 +150,8 @@ class HyperLiquidClient:
                     "user": address
                 }
             
-            response = await self.client.post(
-                self.base_url,
-                json=request_data,
-                headers={"Content-Type": "application/json"}
-            )
-            response.raise_for_status()
-            return response.json()
+            result = await self._make_request(request_data)
+            return result if isinstance(result, list) else []
             
         except Exception as e:
             logger.error(f"获取成交记录失败: {e}")
@@ -91,13 +165,8 @@ class HyperLiquidClient:
                 "user": address
             }
             
-            response = await self.client.post(
-                self.base_url,
-                json=request_data,
-                headers={"Content-Type": "application/json"}
-            )
-            response.raise_for_status()
-            return response.json()
+            result = await self._make_request(request_data)
+            return result if isinstance(result, dict) or isinstance(result, list) else {}
             
         except Exception as e:
             logger.error(f"获取账户价值历史失败: {e}")
@@ -111,13 +180,8 @@ class HyperLiquidClient:
                 "user": address
             }
             
-            response = await self.client.post(
-                self.base_url,
-                json=request_data,
-                headers={"Content-Type": "application/json"}
-            )
-            response.raise_for_status()
-            return response.json()
+            result = await self._make_request(request_data)
+            return result if isinstance(result, list) else []
             
         except Exception as e:
             logger.error(f"获取挂单失败: {e}")
@@ -131,13 +195,8 @@ class HyperLiquidClient:
                 "user": address
             }
             
-            response = await self.client.post(
-                self.base_url,
-                json=request_data,
-                headers={"Content-Type": "application/json"}
-            )
-            response.raise_for_status()
-            return response.json()
+            result = await self._make_request(request_data)
+            return result if isinstance(result, dict) else {}
             
         except Exception as e:
             logger.error(f"获取清算所状态失败: {e}")
@@ -154,13 +213,7 @@ class HyperLiquidClient:
             if start_time:
                 request_data["startTime"] = start_time
             
-            response = await self.client.post(
-                self.base_url,
-                json=request_data,
-                headers={"Content-Type": "application/json"}
-            )
-            response.raise_for_status()
-            result = response.json()
+            result = await self._make_request(request_data)
             
             # API 可能返回列表或对象，统一处理
             if isinstance(result, list):
