@@ -1,8 +1,10 @@
-"""配置管理模块"""
+"""配置管理模块（SQLite 持久化）"""
+
 import json
-import os
+import sqlite3
 from pathlib import Path
 from typing import Dict, Any
+
 from loguru import logger
 
 BASE_DIR = Path(__file__).parent.parent
@@ -11,43 +13,134 @@ CONFIG_DIR = DATA_DIR / "config"
 WALLETS_DIR = DATA_DIR / "wallets"
 CACHE_DIR = DATA_DIR / "cache"
 LOGS_DIR = BASE_DIR / "logs"
+DB_PATH = DATA_DIR / "hyperliquid_analyzer.db"
 
 # 创建必要的目录
 for dir_path in [DATA_DIR, CONFIG_DIR, WALLETS_DIR, CACHE_DIR, LOGS_DIR]:
     dir_path.mkdir(parents=True, exist_ok=True)
 
 
+def _deep_merge(original: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+    """递归合并配置，避免浅拷贝覆盖嵌套字段。"""
+
+    merged = original.copy()
+    for key, value in updates.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 class Config:
-    """配置管理类"""
-    
-    def __init__(self):
+    """配置管理类，使用 SQLite 存储，启动时自动填充默认值。"""
+
+    def __init__(self, db_path: Path | None = None):
+        self.db_path = db_path or DB_PATH
+        self.conn = sqlite3.connect(
+            str(self.db_path), check_same_thread=False, timeout=30.0
+        )
+        self.conn.row_factory = sqlite3.Row
+        self._ensure_table()
         self._configs: Dict[str, Dict[str, Any]] = {}
         self.load_all_configs()
-    
-    def load_all_configs(self):
-        """加载所有配置文件"""
-        config_files = {
-            'system': 'system.json',
-            'scoring': 'scoring.json',
-            'recommendation': 'recommendation.json',
-            'filters': 'filters.json',
-            'notifications': 'notifications.json'
+
+    def _ensure_table(self):
+        """确保系统配置表存在并具备必要字段。"""
+
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS system_configs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                config_key VARCHAR(100) UNIQUE NOT NULL,
+                config_value TEXT NOT NULL,
+                description TEXT,
+                version INTEGER DEFAULT 1,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+        # 补充缺失字段（兼容旧表结构）
+        columns = {
+            row[1]: row[2]
+            for row in self.conn.execute("PRAGMA table_info(system_configs)").fetchall()
         }
-        
-        for name, filename in config_files.items():
-            config_path = CONFIG_DIR / filename
-            if config_path.exists():
-                try:
-                    with open(config_path, 'r', encoding='utf-8') as f:
-                        self._configs[name] = json.load(f)
-                    logger.info(f"Loaded config: {name}")
-                except Exception as e:
-                    logger.error(f"Failed to load config {name}: {e}")
-                    self._configs[name] = self._get_default_config(name)
+        if "version" not in columns:
+            self.conn.execute("ALTER TABLE system_configs ADD COLUMN version INTEGER DEFAULT 1")
+        if "updated_at" not in columns:
+            self.conn.execute(
+                "ALTER TABLE system_configs ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            )
+        self.conn.commit()
+
+    def _load_config_from_db(self, name: str) -> Dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT config_value FROM system_configs WHERE config_key = ?", (name,)
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            return json.loads(row[0])
+        except json.JSONDecodeError as exc:
+            logger.error(f"配置 {name} JSON 解析失败，使用默认值: {exc}")
+            return None
+
+    def _save_config_to_db(self, name: str, value: Dict[str, Any], description: str | None = None):
+        existing = self.conn.execute(
+            "SELECT version FROM system_configs WHERE config_key = ?", (name,)
+        ).fetchone()
+        next_version = (existing[0] + 1) if existing else 1
+
+        self.conn.execute(
+            """
+            INSERT INTO system_configs (config_key, config_value, description, version)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(config_key) DO UPDATE SET
+                config_value = excluded.config_value,
+                description = COALESCE(excluded.description, system_configs.description),
+                version = excluded.version,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (name, json.dumps(value, ensure_ascii=False), description, next_version),
+        )
+        self.conn.commit()
+
+    def load_all_configs(self):
+        """从数据库加载配置，缺失时写入默认值。"""
+
+        config_names = [
+            "system",
+            "scoring",
+            "recommendation",
+            "filters",
+            "notifications",
+            "ai",
+        ]
+
+        # 预加载数据库中已有的配置
+        existing_rows = self.conn.execute(
+            "SELECT config_key, config_value FROM system_configs"
+        ).fetchall()
+        for row in existing_rows:
+            try:
+                self._configs[row[0]] = json.loads(row[1])
+            except json.JSONDecodeError as exc:
+                logger.error(f"配置 {row[0]} JSON 解析失败: {exc}")
+
+        # 填充默认值并写入数据库
+        for name in config_names:
+            default_config = self._get_default_config(name)
+            if name not in self._configs or not self._configs[name]:
+                self._configs[name] = default_config
+                self._save_config_to_db(name, default_config)
             else:
-                self._configs[name] = self._get_default_config(name)
-                self.save_config(name)
-    
+                # 合并默认值缺失字段
+                merged = _deep_merge(default_config, self._configs[name])
+                if merged != self._configs[name]:
+                    self._configs[name] = merged
+                    self._save_config_to_db(name, merged)
+
     def _get_default_config(self, name: str) -> Dict[str, Any]:
         """获取默认配置"""
         defaults = {
@@ -73,6 +166,9 @@ class Config:
                 "pagination": {
                     "default_page_size": 20,
                     "max_page_size": 100
+                },
+                "scheduler": {
+                    "enabled": True  # 调度器开关，便于灰度控制
                 }
             },
             'scoring': {
@@ -165,31 +261,40 @@ class Config:
                     "roi_threshold": 200,
                     "drawdown_threshold": 50
                 }
+            },
+            'ai': {
+                "enabled": False,
+                "api_url": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "temperature": 0.7,
+                "max_tokens": 2000,
+                "daily_limit": 1000,
+                "cost_limit": 1.0,
+                "timeout": 30
             }
         }
         return defaults.get(name, {})
-    
+
     def get_config(self, name: str) -> Dict[str, Any]:
         """获取配置"""
-        return self._configs.get(name, {})
-    
-    def save_config(self, name: str):
-        """保存配置"""
-        config_path = CONFIG_DIR / f"{name}.json"
-        try:
-            with open(config_path, 'w', encoding='utf-8') as f:
-                json.dump(self._configs[name], f, indent=2, ensure_ascii=False)
-            logger.info(f"Saved config: {name}")
-        except Exception as e:
-            logger.error(f"Failed to save config {name}: {e}")
-    
+        return json.loads(json.dumps(self._configs.get(name, {})))
+
     def update_config(self, name: str, updates: Dict[str, Any]):
-        """更新配置"""
-        if name in self._configs:
-            self._configs[name].update(updates)
-            self.save_config(name)
-        else:
-            logger.warning(f"Config {name} not found")
+        """更新配置并持久化到数据库。"""
+
+        if name not in self._configs:
+            logger.warning(f"Config {name} not found，写入默认值后再更新")
+            self._configs[name] = self._get_default_config(name)
+
+        merged_config = _deep_merge(self._configs[name], updates)
+        self._configs[name] = merged_config
+        self._save_config_to_db(name, merged_config)
+
+    def reload(self):
+        """重新加载数据库中的配置。"""
+
+        self._configs.clear()
+        self.load_all_configs()
 
 
 # 全局配置实例

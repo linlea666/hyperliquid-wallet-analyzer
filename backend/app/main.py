@@ -5,7 +5,21 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 import uvicorn
 
-from app.api import wallets, dashboard, notifications, config as config_api, wallet_management, import_api, tag_api, auth, websocket, logs, monitoring, ai
+from app.api import (
+    wallets,
+    dashboard,
+    notifications,
+    config as config_api,
+    wallet_management,
+    import_api,
+    tag_api,
+    auth,
+    websocket,
+    logs,
+    monitoring,
+    ai,
+    leaderboards,
+)
 from app.config import config, DATA_DIR
 from app.utils.logger import setup_logger
 from app.database import db
@@ -38,6 +52,7 @@ app.include_router(wallets.router, prefix="/api/wallets", tags=["钱包"])
 app.include_router(wallet_management.router, prefix="/api/wallet-management", tags=["钱包管理"])
 app.include_router(import_api.router, prefix="/api/import", tags=["批量导入"])
 app.include_router(tag_api.router, prefix="/api/tags", tags=["标签管理"])
+app.include_router(leaderboards.router, prefix="/api/leaderboards", tags=["榜单管理"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["看板"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["通知"])
 app.include_router(logs.router, prefix="/api/logs", tags=["日志管理"])
